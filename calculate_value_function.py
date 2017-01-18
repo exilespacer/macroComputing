@@ -321,7 +321,7 @@ class HW6(object):
             q_1 = (1 - D/L)/(1+hw6.r)
 
             pcntol = abs(q_1 - q_0).max()
-            q_0 = q_0.copy() - pcntol * 10**(-2) * 5
+            q_0 = q_0.copy() - pcntol * 10**(-2)
 
             iter_no += 1
             print('[pooling equilibrium][V.F.I.] #: %s ; pcntol: %s' % (iter_no, pcntol))
