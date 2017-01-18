@@ -4,17 +4,6 @@ import numpy as np
 import pickle
 import pdb
 
-#############################################################
-# TARGET: CALCULATE VALUE FUNCTION V(s, a, h |I)
-# PROCEDURE:
-#   (1) given V_0(s, a, h=0; I), calculate V(s, a, h=1; I)
-#   (2) given V(s, a, h=1; I), calculate V_1(s, a, h=0; I)
-#           (a) given V_0(s, a, h=0; I), calculate V_d0(s, a, h=0; I)
-#           (b) given V(s, a, h=1; I), calculate V_d1(s, a, h=0; I)
-#           (c) calculate V_1(s, a, h=0; I) = max{V_d0, V_d1}
-#   (3) Repeat (1)~(2) if |V_1(s, a, h=0; I) - V_0(s, a, h=0; I) - | > epsilon
-#############################################################
-
 
 class HW6(object):
     def __init__(self, is_debug=False):
@@ -34,7 +23,6 @@ class HW6(object):
         # capital vector
         a_min = - 0.525
         self.a = np.arange(a_min, 2, 0.05)# 0.005
-        N = len(self.a)
 
         # legal record keeping parameter
         self.rho = 0.9
@@ -58,7 +46,7 @@ class HW6(object):
         v_h1_new = v_h1.copy()
 
         # only positive a is feasible
-        a_p = np.where(a >= 0, a, np.nan)
+        # a_p = np.where(a >= 0, a, np.nan)
 
         # (1-1) calcualte utility function in advance, the structure is as followed: us[s][a, a']
         us = []
@@ -88,7 +76,7 @@ class HW6(object):
 
             iter_no += 1
             if self.DEBUG:
-                print('\t[V.F.I.] #: %s ; pcntol: %s' % (iter_no, pcntol))
+                print('\t\t[V_h1][V.F.I.] #: %s ; pcntol: %s' % (iter_no, pcntol))
 
         return v_h1, g_h1
 
@@ -134,7 +122,7 @@ class HW6(object):
 
             iter_no += 1
             if self.DEBUG:
-                print('\t[V.F.I.] #: %s ; pcntol: %s' % (iter_no, pcntol))
+                print('\t\t[V_h0_d0][V.F.I.] #: %s ; pcntol: %s' % (iter_no, pcntol))
 
         return v_h0, g_h0
 
@@ -157,7 +145,7 @@ class HW6(object):
 
         return v_h0, g_h0
 
-    def get_value_fn_iteration(self):
+    def calculate_V_by_value_fn_iteration(self):
         ys, a = self.ys, self.a
 
         # define 3-d array v_init(s, a, h; I), the structure is as followed: v_init[h][a, s]
@@ -174,12 +162,12 @@ class HW6(object):
         pcntol=1
         iter_no = 0
         while pcntol > 10**(-3):
-            # (1) given V_0(s, a, h=0; I), calculate V(s, a, h=1; I)
+            # (1) calculate V(s, a, h=1; I)
             V_calculated[1], G[1] = self.calculate_V_h1(V_init)
 
-            #(2) given V(s, a, h=1; I), calculate V_1(s, a, h=0; I)
+            #(2) calculate V_1(s, a, h=0; I)
             V_h0_d0, G_h0_d0 = self.calculate_V_h0_d0(V_init)
-            V_h0_d1, G_h0_d1 = self.calculate_V_h0_d1(V_calculated)
+            V_h0_d1, G_h0_d1 = self.calculate_V_h0_d1(V_init)
             V_calculated[0] = np.where(V_h0_d0 > V_h0_d1, V_h0_d0, V_h0_d1)
             G[0] = np.where(V_h0_d0 > V_h0_d1, G_h0_d0, G_h0_d1)
             d = np.where(V_h0_d0 > V_h0_d1, 0, 1)
@@ -190,75 +178,64 @@ class HW6(object):
 
             iter_no += 1
             if self.DEBUG:
-                print('[V.F.I.] #: %s ; pcntol: %s' % (iter_no, pcntol))
+                print('\t[V][V.F.I.] #: %s ; pcntol: %s' % (iter_no, pcntol))
 
         return V_init, G, d
 
+    def calculate_state_variables_in_separating_equilibrium(self):
+        q_0 = self.q_0
+        N, N_s = q_0.shape
+
+        q_min = np.zeros((N, N_s))
+        q_max = np.ones((N, N_s))
+
+        pcntol = 1
+        iter_no = 0
+        while pcntol > 10**(-3):
+            V, G, d = self.calculate_V_by_value_fn_iteration()
+
+            q_1 = q_0.copy()
+            for i in range(N):
+                for s in range(N_s):
+                    delta = self.PI[s, 0]*d[i, 0] + self.PI[s, 1]*d[i, 1]
+                    q_1[i, s] = (1 - delta)/(1+self.r)
+
+            # bisection method
+            q_min = np.where(q_1 >= q_0, q_0, q_min)
+            q_max = np.where(q_1 < q_0, q_0, q_max)
+            q_0 = (q_min + q_max)/2
+
+            tol = abs(q_1 - q_0).max()
+            pcntol = tol
+
+            iter_no += 1
+            print('[separating equilibrium][V.F.I.] #: %s ; pcntol: %s' % (iter_no, pcntol))
+
+        return V, G, d, q_0
+
+
+hw6 = HW6()
+
+#pooling equilibrim
 
 
 
-hw6 = HW6(is_debug=False)
-
-N = len(hw6.a)
-N_s = len(hw6.ys)
-v_h0_init = np.zeros((N, N_s))
-v_h1_init = np.zeros((N, N_s))
-V_init = np.array([v_h0_init, v_h1_init])
-G = V_init.copy().astype(int)
-d = v_h0_init.copy()
-
-V_calculated = V_init.copy()
-q_0 = hw6.q_0
-
-# V_calculated[1], G[1] = hw6.calculate_V_h1(V_init)
-# V_h0_d0, G_h0_d0 = hw6.calculate_V_h0_d0(V_init)
-# V_h0_d1, G_h0_d1 = hw6.calculate_V_h0_d1(V_calculated)
-
-q_min = np.ones((N, N_s)) * 0
-q_max = np.ones((N, N_s)) * 1#?
-
-pcntol = 1
-iter_no = 0
-while pcntol > 10**(-2):
-    V, G, d = hw6.get_value_fn_iteration()
-
-    q_1 = q_0.copy()
-    for i in range(N):
-        for s in range(N_s):
-            delta = hw6.PI[s, 0]*d[i, 0] + hw6.PI[s, 1]*d[i, 1]
-            q_1[i, s] = (1 - delta)/(1+hw6.r)
-
-    # bisection method
-    q_min = np.where(q_1 >= q_0, q_0, q_min)
-    print q_min
-    print '~~~'
-
-    q_max = np.where(q_1 < q_0, q_0, q_max)
-    print q_max
-    print '~~~'
-
-    q_0 = (q_min + q_max)/2
-    print q_0
-    print '~~~~~~~'
-
-    tol = abs(q_1 - q_0).max()
-    pcntol = tol#/np.mean(abs(q_1))
 
 
-    iter_no += 1
-    # if DEBUG:
-    print('[V.F.I.] #: %s ; pcntol: %s' % (iter_no, pcntol))
 
+# separating equilibrium
+V, G, d, q = hw6.calculate_state_variables_in_separating_equilibrium()
 
 # store computed results
-with open("results/g.p", "wb") as f:
+with open("results/separating/g.p", "wb") as f:
     pickle.dump(G, f)
 
-with open("results/v.p", "wb") as f:
+with open("results/separating/v.p", "wb") as f:
     pickle.dump(V, f)
 
-with open(open("results/d.p", "wb")) as f:
+with open("results/separating/d.p", "wb") as f:
     pickle.dump(d, f)
 
-with open("results/q.p", "wb") as f:
-    pickle.dump(q_0, f)
+with open("results/separating/q.p", "wb") as f:
+    pickle.dump(q, f)
+
